@@ -3,10 +3,10 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from fastapi import UploadFile, File
 
-from app.utils.config import get_config
-from app.services.transfer_style import transfer_style
-from app.model.model import StyleLearner
-from app.utils.img_utils import img_path_to_tensor, save_tensor_as_image, save_img_file_to_path
+from src.utils.config import get_config
+from src.services.transfer_style import transfer_style
+from src.model.model import StyleLearner
+from src.utils.img_utils import img_path_to_tensor, save_tensor_as_image, save_img_file_to_path
 
 import imghdr
 

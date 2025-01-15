@@ -8,13 +8,13 @@ device = torch.device('cuda')
 
 # given learnable image parameters and the content repr of the original
 # returns the prediction F image content
-def pred(model, img_params):
+def pred(model, img_params, style=False):
     
     # shallow copy of learnable image ensures gradients aren't affected
     img_tensor = img_params.clone().float().to(device)
     assert (1, 3, 224, 224) == img_tensor.shape, f"Shape mismatch: {img_tensor.shape} should be (1, 3, 224, 224)"
     
-    return model(img_tensor)
+    return model(img_tensor, style=style)
 
 # the following loss class is not vectorized and may seem inefficient, however
 # designing it in the following way helped me understand it
@@ -26,10 +26,7 @@ class StyleContentLoss(nn.Module):
         self.mse = nn.MSELoss()
         
         # n as layers progress
-        self.N = [64, 128, 256, 512, 512, 512]
-        
-        # m as layers progress
-        self.M = [224, 112, 56, 28, 14, 7]
+        self.N = [128, 128, 256, 256, 512, 512, 1024, 1024]
         
     # computes total loss
     def forward(self, pred_content, pred_styles, true_content, true_styles, alpha, beta, style_weights):
@@ -43,13 +40,13 @@ class StyleContentLoss(nn.Module):
         return (content_loss + style_loss), content_loss, style_loss
         
     # returns the style layer loss given 1) pred x 2) label a, 3) current layer number
-    def layer_style_loss(self, x, a, i):
+    def layer_style_loss(self, pred, label, areas i):
         
         # general error calculation
         style_error = torch.sum((x - a) ** 2)
         
         # normalize error using n and m
-        loss_normalization = (4*(self.N[i]**2)*(self.M[i]**2))
+        loss_normalization = (4*(self.N[i]**2)*(self.areas[i]**2))
         return style_error/loss_normalization
     
     def total_style_loss(self, x_list, a_list, w):
@@ -96,14 +93,14 @@ def transfer_style(
     model_style = model_style.to(device) # to extract painting style
     
     # getting content representation from content image from given layer in model
-    output_c = model_content(content_tensor)
-    true_content = output_c[0][content_layer].detach() # detaching so it won't be included in gradient descent update
+    output_c = model_content(content_tensor, style=False)
+    true_content = output_c[content_layer].detach() # detaching so it won't be included in gradient descent update
     
     # getting style representations from style image UP TO AND INCLUDING GIVEN LAYER (for total style loss calculation)
-    output_s = model_style(style_tensor)
+    output_s = model_style(style_tensor, style=True)
     
     # detach each layer's style representation in the list individually using list comprehension
-    true_styles = [style.detach() for style in output_s[1][0:style_layer+1]]
+    true_styles = [style.detach() for style in output_s[0:style_layer+1]]
     
     # initialize optimizer
     optimizer = torch.optim.Adam([pred_params], lr=config['lr'])
@@ -116,10 +113,10 @@ def transfer_style(
         optimizer.zero_grad()
 
         # content prediction
-        pred_content = pred(model_content, pred_params)[0][content_layer]
+        pred_content = pred(model_content, pred_params, style=False)[content_layer]
 
         # style prediction
-        pred_styles = pred(model_style, pred_params)[1][0:style_layer+1]
+        pred_styles = pred(model_style, pred_params, style=True)[0:style_layer+1]
 
         # calculate loss
         alpha = config['alpha']
